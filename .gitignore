@@ -1,0 +1,7 @@
+# Rust build output
+firmware/target/
+
+# Merged flash image (rebuild with scripts/build-release.sh or CI)
+flasher/bin/*.bin
+
+.DS_Store

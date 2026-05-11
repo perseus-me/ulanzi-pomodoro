@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Espressif Rust toolchain
+        uses: esp-rs/xtensa-toolchain@v1
+        with:
+          default: true
+          ldproxy: false
+          buildtargets: esp32
+          version: "1.88.0.0"
+
+      - name: Cache cargo registry & target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            firmware/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('firmware/Cargo.toml') }}
+
+      - name: Install espflash
+        run: cargo install espflash --locked --version "^4"
+
+      - name: Build firmware
+        working-directory: firmware
+        run: cargo build --release
+        env:
+          # We deliberately omit Wi-Fi credentials from public CI builds — the
+          # firmware will simply skip the NTP fetch. Users who want a
+          # pre-configured build should run scripts/build-release.sh locally.
+          SSID: ""
+          WIFI_PASSWORD: ""
+
+      - name: Merge image
+        run: |
+          mkdir -p flasher/bin
+          espflash save-image \
+            --chip esp32 \
+            --merge \
+            --partition-table firmware/partitions.csv \
+            firmware/target/xtensa-esp32-none-elf/release/ulanzi-pomodoro \
+            flasher/bin/firmware.bin
+          ls -l flasher/bin/firmware.bin
+
+      - name: Stamp manifest with release tag
+        run: |
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            python3 -c "import json,sys;p='flasher/manifest.json';m=json.load(open(p));m['version']='${version}';json.dump(m,open(p,'w'),indent=2)"
+          fi
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: flasher
+
+  deploy:
+    name: Deploy installer page
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

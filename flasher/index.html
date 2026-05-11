@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ulanzi Pomodoro Installer</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1a1a1a;
+        --bg: #fafafa;
+        --muted: #555;
+        --accent: #d35400;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #f5f5f5;
+          --bg: #0e0e10;
+          --muted: #aaa;
+          --accent: #ff8c33;
+        }
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 3rem 1.5rem;
+      }
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 2.2rem;
+        color: var(--accent);
+      }
+      p {
+        line-height: 1.55;
+        color: var(--muted);
+      }
+      .install {
+        margin: 2rem 0;
+      }
+      code {
+        background: rgba(127, 127, 127, 0.15);
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        font-size: 0.95em;
+      }
+      details {
+        margin-top: 2rem;
+        padding: 1rem 1.25rem;
+        border-radius: 8px;
+        background: rgba(127, 127, 127, 0.08);
+      }
+      details summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      details ul {
+        margin: 0.5rem 0 0;
+        padding-left: 1.25rem;
+        color: var(--muted);
+      }
+      .unsupported {
+        display: none;
+        padding: 1rem;
+        margin-top: 1rem;
+        border-radius: 6px;
+        background: rgba(255, 80, 80, 0.12);
+        color: #c0392b;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Ulanzi Pomodoro</h1>
+      <p>
+        Custom Rust firmware that turns the Ulanzi TC001 pixel clock into a
+        self-contained Pomodoro timer with three presets and on-device stats.
+        Plug your TC001 into your computer, then click <strong>Install</strong>.
+      </p>
+
+      <div class="install">
+        <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
+      </div>
+
+      <div class="unsupported" id="unsupported">
+        Your browser does not support Web Serial. Please use the latest
+        <strong>Chrome</strong>, <strong>Edge</strong> or
+        <strong>Opera</strong> on a desktop computer (Firefox, Safari and iOS
+        are unsupported).
+      </div>
+
+      <details>
+        <summary>How it works</summary>
+        <ul>
+          <li>
+            The firmware boots, briefly tries to fetch the current time via
+            NTP (if Wi-Fi was baked in at build time), and then shuts the
+            radio off.
+          </li>
+          <li>
+            The three buttons start preset 1 / 2 / 3 from the idle screen.
+            Pressing again pauses; long-pressing SELECT cancels.
+          </li>
+          <li>
+            Long-press SELECT on the idle screen to open the menu, where you
+            can tweak brightness and the work/rest minutes for each preset.
+          </li>
+          <li>
+            Statistics for the last 32 days are persisted in flash, so a
+            power-cycle won't wipe your streak.
+          </li>
+        </ul>
+      </details>
+
+      <p style="margin-top: 2rem; font-size: 0.85rem;">
+        Source code &amp; build instructions:
+        <a href="https://github.com/perseus/ulanzi-pomodoro">github.com/perseus/ulanzi-pomodoro</a>.
+      </p>
+    </main>
+
+    <script
+      type="module"
+      src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+    ></script>
+    <script>
+      if (!("serial" in navigator)) {
+        document.getElementById("unsupported").style.display = "block";
+      }
+    </script>
+  </body>
+</html>
