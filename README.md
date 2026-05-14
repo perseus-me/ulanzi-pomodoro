@@ -8,9 +8,9 @@ Custom Rust firmware for the [Ulanzi TC001 pixel clock](https://www.ulanzi.com/p
 
 - Three preset slots (defaults: `25/5`, `50/10`, `90/20`) bound to the three front-panel buttons.
 - Countdown screen with `MM:SS`, phase letter (`W` / `R`) and a progress bar.
-- Idle screen showing today's count and a 7-day bar chart.
+- Idle screen showing today's productive minutes and colored squares for completed work intervals.
 - Settings menu (long-press SELECT) to adjust brightness and per-preset work/rest minutes; saves on exit.
-- Rolling 32-day statistics with two A/B copies and CRC32 for atomic writes.
+- Rolling 32-day productive-minute statistics with two A/B copies and CRC32 for atomic writes.
 - One-shot NTP fetch at boot (when Wi-Fi credentials are baked in); the radio is shut down immediately after to free memory.
 - Factory reset: hold LEFT for ~1.5 s while booting to wipe NVS and revert to defaults.
 - Browser-based flashing via [ESP Web Tools](https://esphome.github.io/esp-web-tools/) on GitHub Pages.
@@ -24,9 +24,10 @@ the menu editing mode).
 
 ### Idle screen
 
-Shows today's completed count and a 7-day bar chart. The rightmost bar is
-today and blinks at 1 Hz. A green pixel in the top-right corner means the
-clock is anchored to real wall-clock time via NTP.
+Shows today's productive minutes and colored 2x2 squares for completed work
+intervals. Up to twelve intervals fit on the screen; if there are more, the
+last square blinks white. A green pixel in the top-right corner means the clock
+is anchored to real wall-clock time via NTP.
 
 | Button | Press                      | Long press         |
 |--------|----------------------------|--------------------|
@@ -89,9 +90,9 @@ menu exit (long-press SELECT).
 
 Booting without Wi-Fi credentials (or with the access point out of reach)
 skips the single NTP fetch — the device runs normally, but the sync dot stays
-off and the 7-day chart pins to the last known date. Today's counter is
-preserved across reboots as long as the clock manages to sync once; if it
-never syncs the counter is attributed to the day of the last successful sync.
+off. The idle-screen counter is preserved across reboots as long as the clock
+manages to sync once; if it never syncs, completed intervals are accumulated in
+the current stored stats slot instead of being dropped.
 
 ## Hardware (Ulanzi TC001)
 

@@ -14,6 +14,7 @@ use crate::storage::nvs::{
 
 pub const MAX_STATS_DAYS: usize = 32;
 const ENCODED_LEN: usize = MAX_STATS_DAYS * 8 + 4; // 256 + head + padding
+const UNDATED_DATE: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DayStats {
@@ -109,6 +110,34 @@ impl Stats {
             };
         }
         true
+    }
+
+    /// Credit completed work to the best day we can identify right now.
+    ///
+    /// With a wall-clock date this is the real calendar day. Without a clock
+    /// anchor, keep accumulating in the current head slot so offline devices
+    /// still show and persist progress instead of dropping completions.
+    pub fn record_completed_work_best_effort(
+        &mut self,
+        date_yyyymmdd: Option<u32>,
+        focus_minutes: u16,
+    ) -> bool {
+        let date = match date_yyyymmdd {
+            Some(date) => date,
+            None if self.empty => UNDATED_DATE,
+            None => self.days[self.head as usize]
+                .date_yyyymmdd
+                .max(UNDATED_DATE),
+        };
+        self.record_completed_work(date, focus_minutes)
+    }
+
+    pub fn current(&self) -> DayStats {
+        if self.empty {
+            DayStats::default()
+        } else {
+            self.days[self.head as usize]
+        }
     }
 
     /// Today's count, or 0 if we haven't recorded anything for `today`.

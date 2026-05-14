@@ -271,29 +271,26 @@ fn main() -> ! {
                 PhaseTransition::WorkFinished => {
                     println!("pomodoro: work finished");
                     if let Some(completed) = pomodoro.take_completed_work() {
-                        if let Some(today) = today {
-                            if stats.record_completed_work(today, completed.minutes) {
-                                if let Err(err) = stats_store.save(&mut flash, &stats) {
-                                    println!("nvs: stats save failed: {:?}", err);
-                                }
-                                // Stamp last_seen_unix alongside the stats commit so
-                                // a power-cut right after this won't lose the date.
-                                if let Some(unix) = clock.now_unix(now) {
-                                    if unix > settings.last_seen_unix {
-                                        settings.last_seen_unix = unix;
-                                        if let Err(err) =
-                                            settings_store.save(&mut flash, &settings)
-                                        {
-                                            println!(
-                                                "nvs: settings save after stats failed: {:?}",
-                                                err
-                                            );
-                                        }
+                        if stats.record_completed_work_best_effort(today, completed.minutes) {
+                            if today.is_none() {
+                                println!("pomodoro: no clock anchor, crediting current stats slot");
+                            }
+                            if let Err(err) = stats_store.save(&mut flash, &stats) {
+                                println!("nvs: stats save failed: {:?}", err);
+                            }
+                            // Stamp last_seen_unix alongside the stats commit so
+                            // a power-cut right after this won't lose the date.
+                            if let Some(unix) = clock.now_unix(now) {
+                                if unix > settings.last_seen_unix {
+                                    settings.last_seen_unix = unix;
+                                    if let Err(err) = settings_store.save(&mut flash, &settings) {
+                                        println!(
+                                            "nvs: settings save after stats failed: {:?}",
+                                            err
+                                        );
                                     }
                                 }
                             }
-                        } else {
-                            println!("pomodoro: no clock anchor, dropping stats credit");
                         }
                     }
                     notifier.finish();
