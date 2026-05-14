@@ -3,37 +3,42 @@
 //! Layout (32x8):
 //!
 //! ```text
-//!     cols 0..=11         12..=20       21..=23  24..=30  31
-//!   +----------------+----------------+--------+--------+---+
-//!   |     TDY        | today's count  |  gap   | 7-day  | * |
-//!   |  (FONT_4X6)    |  (FONT_4X6)    |        | bars   |   |
-//!   +----------------+----------------+--------+--------+---+
+//!     cols 0..=3    5..=16       18..=31
+//!   +------------+------------+----------------+
+//!   |     M      | minutes    | completed work |
+//!   | (FONT_4X6) | today      | segment squares|
+//!   +------------+------------+----------------+
 //! ```
 //!
-//! The rightmost bar is "today" and blinks at ~1 Hz so the user can tell at
-//! a glance which one is the current day. Older days are dimmer.
+//! The segment grid fits twelve completed work intervals. If today has more
+//! completions than fit, the last square blinks white to indicate overflow.
 //!
 //! Buttons:
 //!   * Press LEFT / SELECT / RIGHT → start the corresponding preset.
 //!   * Long-press SELECT          → open the settings menu.
 
 use embedded_graphics::{
-    Drawable,
-    mono_font::{MonoTextStyle, ascii::FONT_4X6},
+    mono_font::{ascii::FONT_4X6, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::Point,
     text::{Baseline, Text},
+    Drawable,
 };
 
 use crate::{
-    display::{FrameBuffer, MATRIX_HEIGHT, RgbColor},
+    display::{FrameBuffer, RgbColor},
     input::{ButtonEvent, ButtonId},
-    storage::stats::DayStats,
     ui::{RenderContext, UiAction},
 };
 
-const BAR_X0: usize = 24;
-const BAR_COUNT: usize = 7;
+const MINUTES_X: i32 = 5;
+const SEGMENT_X0: usize = 18;
+const SEGMENT_Y0: usize = 0;
+const SEGMENT_COLS: usize = 4;
+const SEGMENT_ROWS: usize = 3;
+const SEGMENT_SIZE: usize = 2;
+const SEGMENT_STRIDE: usize = 3;
+const MAX_SEGMENT_SQUARES: usize = SEGMENT_COLS * SEGMENT_ROWS;
 
 pub fn handle(ev: ButtonEvent, _ctx: &RenderContext<'_>) -> Option<UiAction> {
     match ev {
@@ -46,77 +51,65 @@ pub fn handle(ev: ButtonEvent, _ctx: &RenderContext<'_>) -> Option<UiAction> {
 }
 
 pub fn render(fb: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-    let today_count = ctx
+    let today_stats = ctx
         .today
-        .map(|t| ctx.stats.today(t).completed_pomodoros)
-        .unwrap_or(0);
+        .map(|t| ctx.stats.today(t))
+        .unwrap_or_else(|| ctx.stats.current());
+    let today_minutes = today_stats.focus_minutes;
 
-    // "TDY"
+    // "M" = productive minutes today.
     let label_style = MonoTextStyle::new(&FONT_4X6, Rgb888::new(160, 160, 160));
-    let _ = Text::with_baseline("TDY", Point::new(0, 1), label_style, Baseline::Top).draw(fb);
+    let _ = Text::with_baseline("M", Point::new(0, 1), label_style, Baseline::Top).draw(fb);
 
-    // today's count
+    // Today's productive minutes.
     let mut buf = [0u8; 3];
-    let text = format_u16(today_count, &mut buf);
-    let count_color = if today_count > 0 {
+    let text = format_u16(today_minutes, &mut buf);
+    let count_color = if today_minutes > 0 {
         Rgb888::new(255, 200, 0)
     } else {
         Rgb888::new(100, 100, 100)
     };
     let count_style = MonoTextStyle::new(&FONT_4X6, count_color);
-    let _ = Text::with_baseline(text, Point::new(14, 1), count_style, Baseline::Top).draw(fb);
+    let _ =
+        Text::with_baseline(text, Point::new(MINUTES_X, 1), count_style, Baseline::Top).draw(fb);
 
-    draw_bar_chart(fb, ctx);
+    draw_segment_squares(fb, today_stats.completed_pomodoros, ctx.now_ms);
 }
 
-fn draw_bar_chart(fb: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-    let week = ctx.stats.last_n(BAR_COUNT);
-    let view = &week[..BAR_COUNT];
+fn draw_segment_squares(fb: &mut FrameBuffer, completed: u16, now_ms: u64) {
+    let visible = (completed as usize).min(MAX_SEGMENT_SQUARES);
+    let overflow = completed as usize > MAX_SEGMENT_SQUARES;
+    let overflow_on = (now_ms / 600) % 2 == 0;
 
-    let max = view
-        .iter()
-        .map(|d| d.completed_pomodoros)
-        .max()
-        .unwrap_or(0);
-
-    let on = (ctx.now_ms / 600) % 2 == 0;
-    let today_bright = RgbColor::new(255, 200, 0);
-    let today_dim = RgbColor::new(120, 90, 0);
-    let other = RgbColor::new(80, 80, 90);
-
-    for (i, day) in view.iter().enumerate() {
-        let x = BAR_X0 + i;
-        if x >= 31 {
-            break;
-        }
-        let is_today = i + 1 == BAR_COUNT;
-        let height = bar_height(day, max);
-        let color = if is_today {
-            if on { today_bright } else { today_dim }
+    for i in 0..visible {
+        let col = i % SEGMENT_COLS;
+        let row = i / SEGMENT_COLS;
+        let x0 = SEGMENT_X0 + col * SEGMENT_STRIDE;
+        let y0 = SEGMENT_Y0 + row * SEGMENT_STRIDE;
+        let color = if overflow && i + 1 == MAX_SEGMENT_SQUARES && overflow_on {
+            RgbColor::WHITE
         } else {
-            other
+            segment_color(i)
         };
-        for h in 0..height {
-            let y = MATRIX_HEIGHT - 1 - h;
-            fb.set_pixel(x, y, color);
-        }
-        // Always mark today's column with at least a baseline pixel, so the
-        // user can spot the "current day" even on a fresh ring with no data.
-        if is_today && height == 0 && ctx.today.is_some() {
-            fb.set_pixel(x, MATRIX_HEIGHT - 1, color);
+
+        for y in y0..(y0 + SEGMENT_SIZE) {
+            for x in x0..(x0 + SEGMENT_SIZE) {
+                fb.set_pixel(x, y, color);
+            }
         }
     }
 }
 
-/// Map a day's count to a bar height in `0..=8`, scaled against the local
-/// maximum so the chart auto-ranges. Any non-zero count produces a bar at
-/// least one pixel tall.
-fn bar_height(day: &DayStats, max: u16) -> usize {
-    if max == 0 || day.completed_pomodoros == 0 {
-        return 0;
-    }
-    let scaled = (day.completed_pomodoros as u32 * MATRIX_HEIGHT as u32) / max as u32;
-    (scaled as usize).max(1).min(MATRIX_HEIGHT)
+fn segment_color(i: usize) -> RgbColor {
+    const COLORS: [RgbColor; 6] = [
+        RgbColor::new(255, 120, 0),
+        RgbColor::new(255, 200, 0),
+        RgbColor::new(80, 220, 80),
+        RgbColor::new(0, 180, 220),
+        RgbColor::new(120, 120, 255),
+        RgbColor::new(220, 80, 180),
+    ];
+    COLORS[i % COLORS.len()]
 }
 
 fn format_u16(n: u16, buf: &mut [u8; 3]) -> &str {
